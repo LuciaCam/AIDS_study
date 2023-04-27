@@ -1,0 +1,63 @@
+---
+title: "Case Study C - HIV"
+author: "Oumaima Al Qoh, Francisco Arrieta, Lucia Camenisch, Manuela Giansante, Emily Schmidt, Camille Beatrice Valera"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true # creating a table of contents (toc)
+    toc_float: 
+      collapsed: false # toc does not collapse and is shown as a sidebar (toc_float)
+    number_sections: true # document sections are numbered
+    theme: cosmo
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+```{r packages}
+library(data.table)
+library(ggplot2)
+library(e1071)
+```
+
+```{r}
+aids <- fread("Caids.csv")
+
+new_DF <- aids[rowSums(is.na(aids)) > 0,]
+```
+
+
+```{r}
+par(mfrow = c(3,2))
+
+hist(aids$cd4)
+hist(sqrt(aids$cd4))
+hist(aids$cd8)
+hist(sqrt(aids$cd8))
+hist(aids$rna)
+hist(log(aids$rna))
+```
+
+```{r}
+cor(aids[, 3:5], use = "complete.obs")
+```
+
+
+```{r}
+skewness(sqrt(aids$cd4), na.rm = TRUE)
+skewness(sqrt(aids$cd8), na.rm = TRUE)
+skewness(log(aids$rna), na.rm = TRUE)
+```
+
+```{r}
+aids[, sex := ifelse(sex == "m", 0, 1)]
+aids[, type := ifelse(type == "DP", 0, 1)]
+
+plot(aids[, 3:5], col = aids$type)
+
+summary(aids)
+```
+
+
