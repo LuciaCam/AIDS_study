@@ -20,10 +20,14 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align =
 library(data.table)
 library(ggplot2)
 library(e1071)
+library(missForest)
 ```
 
 ```{r}
 aids <- fread("Caids.csv")
+
+aids[, sex := as.factor(sex)]
+aids[, type := as.factor(type)]
 
 new_DF <- aids[rowSums(is.na(aids)) > 0,]
 ```
@@ -39,6 +43,17 @@ hist(sqrt(aids$cd8))
 hist(aids$rna)
 hist(log(aids$rna))
 ```
+
+```{r}
+aids_melt <- melt(aids[, -1], id.vars = "type")
+ggplot(data = aids_melt[type %in% "DP",], aes(value)) + geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "DP")
+ggplot(data = aids_melt[type %in% "CP",], aes(value)) + geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "CP")
+```
+
 
 ```{r}
 cor(aids[, 3:5], use = "complete.obs")
@@ -59,5 +74,26 @@ plot(aids[, 3:5], col = aids$type)
 
 summary(aids)
 ```
+
+
+```{r}
+aids_completed <- missForest(aids, variablewise = TRUE)
+
+summary(aids)
+summary(aids_completed$ximp)
+```
+
+```{r}
+aids <- aids_completed$ximp
+```
+
+
+# LDA QDA (normal distributions)
+
+
+# tree, bagging, boosting, random forests give importance
+
+# logistic regression importance through coeffs
+
 
 
