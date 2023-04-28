@@ -24,6 +24,7 @@ library(missForest)
 library(caret)
 library(MASS)
 library(gridExtra)
+library(fabletools)
 ```
 
 ```{r}
@@ -101,7 +102,11 @@ norm_aids <- predict(norm_values, aids)
 
 
 ## boxcox under lucia suggestion
+
+It transforms a non-normal dependent variables into a normal shape.
+
 ```{r}
+bcx_aids<- box_cox(aids, lambda=1)
 
 ```
 
@@ -163,8 +168,7 @@ ggplot(importance2) + geom_col(aes(x=Var1 ,y= value , fill= Var1), showlegend = 
 
 ```
 
-For the normality assumptions they both fail.
-I do not think this is a valid approach in our case.
+
 
 
 
