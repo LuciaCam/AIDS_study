@@ -23,7 +23,7 @@ library(e1071)
 library(missForest)
 library(caret)
 library(MASS)
-library(plsgenomics)
+library(gridExtra)
 ```
 
 ```{r}
@@ -100,6 +100,12 @@ norm_aids <- predict(norm_values, aids)
 ```
 
 
+## boxcox under lucia suggestion
+```{r}
+
+```
+
+
 # LDA (normal distributions)
  The method assumes that the data can be separated into classes based on linear combination of the input features.
 If there is not separation in the data logit regression will out-perform LDA.
@@ -108,9 +114,23 @@ However, unlike tree-based models, LDA assumes that the predictors are normally 
 
 Equal covariance matrices assumption:
 ```{r}
-
+plot <- list()
+box_variables <- c("sex", "cd4", "cd8", "rna")
+for(i in box_variables) {
+    plot[[i]] <- ggplot(norm_aids, 
+                        aes_string(x = "type", 
+                                   y = i, 
+                                   col = "type", 
+                                   fill = "type")) + 
+    geom_boxplot(alpha = 0.2) + 
+    theme(legend.position = "none") + 
+    scale_color_manual(values = c("blue", "red")) +
+    scale_fill_manual(values = c("blue", "red"))
+}
+do.call(grid.arrange, c(plot, nrow = 1))
 ```
 
+Definitely not same covariance matrices.
 
 
 ```{r}
@@ -144,6 +164,7 @@ ggplot(importance2) + geom_col(aes(x=Var1 ,y= value , fill= Var1), showlegend = 
 ```
 
 For the normality assumptions they both fail.
+I do not think this is a valid approach in our case.
 
 
 
