@@ -91,86 +91,32 @@ aids <- aids_completed$ximp
 ```
 
 
-
-# pre-processing
-
+## Trees: Data Partitioning
 ```{r}
-norm_values <- preProcess(aids, method = c("center", "scale"))
-norm_aids <- predict(norm_values, aids)
-```
-
-
-## boxcox under lucia suggestion
-```{r}
-
-```
-
-
-# LDA (normal distributions)
- The method assumes that the data can be separated into classes based on linear combination of the input features.
-If there is not separation in the data logit regression will out-perform LDA.
-Coefficients of linear discriminants: These display the linear combination of predictor variables that are used to form the decision rule of the LDA model. 
-However, unlike tree-based models, LDA assumes that the predictors are normally distributed and that the covariance matrices are equal for all classes, so the variable importance measures may not be appropriate for all types of data.
-
-Equal covariance matrices assumption:
-```{r}
-plot <- list()
-box_variables <- c("sex", "cd4", "cd8", "rna")
-for(i in box_variables) {
-    plot[[i]] <- ggplot(norm_aids, 
-                        aes_string(x = "type", 
-                                   y = i, 
-                                   col = "type", 
-                                   fill = "type")) + 
-    geom_boxplot(alpha = 0.2) + 
-    theme(legend.position = "none") + 
-    scale_color_manual(values = c("blue", "red")) +
-    scale_fill_manual(values = c("blue", "red"))
-}
-do.call(grid.arrange, c(plot, nrow = 1))
-```
-
-Definitely not same covariance matrices.
-
-
-```{r}
+# Set the seed for the random number generator for reproducing the partition.
 set.seed(1)
 
-# Fit the model
-DA1 <- lda(type ~., data= norm_aids)
-# the response variable is the grouping factor 
-DA1
-plot(DA1)
-varplot(DA1)
-importance<- as.data.frame(melt(DA1$scaling^2))
-ggplot(importance) + geom_col(aes(x=Var1 ,y= value , fill= value), showlegend = F)+ theme_classic()
+# Partitioning into training (60%) and validation (40%) 
+train.index <- sample(c(1:dim(aids)[1]), dim(aids)[1]*0.6)
+valid.index <- setdiff(c(1:dim(aids)[1]), train.index)  
 
+# Collect all the columns with training rows into training set 
+train <- aids[train.index, ]
+valid <- aids[valid.index, ]
+
+dim(train)
+dim(valid)
 ```
 
-#QDA
-- Observation of each class is drawn from a normal distribution (same as LDA).
-- QDA assumes that each class has its own covariance matrix
+## Classification Decision Tree
 ```{r}
-set.seed(1)
-
 # Fit the model
-DA2 <- qda(type ~., data= norm_aids)
-# the response variable is the grouping factor 
-DA2
-
-importance2<- as.data.frame(melt(DA2$scaling^2))
-ggplot(importance2) + geom_col(aes(x=Var1 ,y= value , fill= Var1), showlegend = F)+ theme_classic()
-
+class.tree <- rpart(Personal.Loan ~ ., data = train.df, method = "class")
 ```
 
-For the normality assumptions they both fail.
-I do not think this is a valid approach in our case.
 
 
 
-# tree, bagging, boosting, random forests give importance
-
-# logistic regression importance through coeffs
 
 
 
