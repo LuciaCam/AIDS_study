@@ -93,6 +93,16 @@ aids <- aids_completed$ximp
 
 ## Trees: Data Partitioning
 ```{r}
+library(rpart) # Used for building classification and regression trees
+library(RColorBrewer)
+library(rattle)  # Graphical Data Interface
+library(rpart.plot) # Automatically scales and adjusts the displayed tree for best fit
+library(gains)
+library(adabag)
+library(randomForest)
+library(lift) # TopDecileLift()
+library(caret)
+
 # Set the seed for the random number generator for reproducing the partition.
 set.seed(1)
 
@@ -108,10 +118,217 @@ dim(train)
 dim(valid)
 ```
 
+## Deep Classification Decision Tree
+```{r}
+# Create deep tree (page 219)
+deep_class_tree <- rpart(formula = type ~ sex + cd4 + cd8 + rna,
+            data = train, method = "class", cp = 0, minsplit = 1)
+
+# Plot tree
+prp(deep_class_tree, type = 1, extra = 1, under = TRUE, split.font = 1, varlen = -10, box.col=ifelse(deep_class_tree$frame$var == "<leaf>", 'gray', 'white'))
+```
+
+```{r}
+# Variable importance, deep tree
+t(t(deep_class_tree$variable.importance))
+```
+
+```{r}
+# cp table deep tree
+deep_class_tree$cptable
+```
+
+### Optimal Splits
+```{r}
+# Create a table showing the various attributes to determine the best cp to prune the regression tree
+# argument xval refers to the number of folds to use in rpart's built-in
+# cross-validation procedure
+# argument cp sets the smallest value for the complexity parameter.
+cv.ct <- rpart(type ~ ., data = train, method = "class",
+cp = 0.00001, minsplit = 5, xval = 5)
+
+# use printcp() to print the table.
+printcp(cv.ct)
+
+```
+
+Lowest xerror and xstd is nsplit = 1. All four predictors were used.
+
 ## Classification Decision Tree
 ```{r}
 # Fit the model
-class.tree <- rpart(Personal.Loan ~ ., data = train.df, method = "class")
+class_tree <- rpart(type ~ ., data = train, method = "class")
+class_tree
+predict_tree <- predict(class_tree, valid, type = "class")
+
+# Plot the classification tree
+fancyRpartPlot(class_tree, caption = NULL, main = "Classification Tree", palettes = "GnBu", digits = -3)
+```
+
+```{r}
+printcp(class_tree)
+```
+
+```{r}
+plotcp(class_tree)
+class_tree$cptable[which.min(class_tree$cptable[,"xerror"]),"CP"]
+```
+
+```{r}
+bestcp <- class_tree$cptable[which.min(class_tree$cptable[,"xerror"]),"CP"]
+pruned_tree <- prune(class_tree, cp = bestcp)
+
+rpart.plot(pruned_tree, extra=104, box.palette="GnBu",
+               branch.lty=3, shadow.col="gray", nn=TRUE)
+```
+
+```{r}
+# Variable importance, pruned tree
+t(t(pruned_tree$variable.importance))
+```
+
+```{r}
+# cp table pruned tree
+pruned_tree$cptable
+```
+
+```{r}
+library(ROCR)
+fit.pr = predict(pruned_tree, type="prob")[,2]
+fit.pred = prediction(fit.pr, train$type)
+fit.perf = performance(fit.pred,"tpr","fpr")
+plot(fit.perf,lwd=2,col="blue",
+     main="ROC:  Classification Trees on Titanic Dataset")
+abline(a=0,b=1)
+```
+
+
+## Confusion Matrix
+```{r}
+# Create confusion matrix for classification tree
+conf_mat_tree  <- confusionMatrix(predict_tree, as.factor(valid$type))
+conf_mat_tree
+
+# Create fourfoldplot
+fourfoldplot(confusionMatrix(predict_tree, as.factor(valid$type))$table)
+```
+
+```{r}
+# Accuracy and specificity for tree
+tree_res = c(conf_mat_tree$overall[1], conf_mat_tree$byClass[2])
+
+tree_res
+```
+
+
+```{r}
+# Fit the tree model with default settings
+tree <- rpart(type ~ ., data = train, method = "class")
+tree_predict <- predict(tree, valid, type = "class")
+
+# Plot the classification tree (page 213)
+fancyRpartPlot(tree, caption = NULL, main = "Classification Tree", palettes = "GnBu", digits = -3)
+
+tree
+
+printcp(tree) # Print cp 
+
+
+# Calculates how much a given model "uses" that variable to make accurate predictions
+importance <- t(t(tree$variable.importance)) # Transpose the matrix to create a column with the variable labels to acquire the importance of each
+
+# Visually see the variable importance within the tree
+plot(importance, main = "ClassTree Variable Importance", col = "darkgreen", ylab = "Importance")
+
+importance
+
+# Confusion matrix
+conf_mtrx1 <- confusionMatrix(tree_predict, as.factor(valid$type), positive = "0")
+conf_mtrx1
+
+# Visualize confusion matrix
+fourfoldplot(conf_mtrx1$table, main = "Confusion Matrix - Classification Tree Validation", color = c("#009999", "#0066FFFF"))
+```
+
+```{r}
+par(mfrow=c(1,2)) # Set two plots side-by-side
+
+# Predict probabilities for the classification tree with the validation set
+pred_prob = predict(tree, valid, type = "prob")
+
+# Create dataframe with the actual and probability values for the validation set
+ClassTreeDF = data.frame(actual = valid$type, prob = predict(tree, valid, type = "prob")[,2])
+
+# Compute gains for lift chart (page 138)
+gain <- gains(predicted = ClassTreeDF$prob, actual = as.numeric(as.character(ClassTreeDF$actual)), groups=dim(ClassTreeDF)[1], ties.method = c("first"))
+
+# Plot the lift chart (page 138)
+plot(c(0, gain$cume.pct.of.total*sum(as.numeric(as.character(ClassTreeDF$actual)))) ~ c(0, gain$cume.obs), main = "Gains Chart",
+xlab = "# Cases", ylab = "Cumulative", type="l")
+
+# Plot the lift chart diagonal (page 138)
+lines(c(0,sum(as.numeric(as.character(ClassTreeDF$actual)))) ~ c(0,dim(ClassTreeDF)[1]), lty = 2, col = "blue")
+
+# Compute deciles (page 249)
+gain.decile <- gains(predicted = ClassTreeDF$prob, actual = as.numeric(as.character(ClassTreeDF$actual)),ties.method = c("first"))
+
+# Plot decile-wise chart (page 249)
+barplot(gain.decile$mean.resp / mean(as.numeric(as.character(ClassTreeDF$actual))), names.arg = gain.decile$depth, main = "Decile-wise Lift Chart", xlab = "Percentile", ylab = "Mean Response")
+```
+
+```{r}
+# Calculates the top-decile lift which expresses the incidence in 10% of observations 
+TopDecileLift(pred_prob[,2], valid$type)
+```
+Some useful tools for assessing model classification are the gains chrt and decile-wise lift chart. The “lift” over the base curve indicates for a given number of cases, the additional res ponders that you can identify by using the model. This helps derive good accuracy measures. The decile-wise lift chart takes 10% of the records that are ranked by the model as “most probable 1’s” yields 33 times as many 1’s as would simply selecting 10% of the records at random. The lift will vary with the number of records we choose to act on. A good classifier will give us a high lift when we act on only a few records.
+
+The TopDecileLift() function allows a user to calculate the top-decile lift, a metric that expresses how the incidence in the 10% customers with the highest model predictions compares to the overall sample incidence. A lift of 1 is expected for a random model. For this classification tree though, a lift of 1.914 indicates that in the 10% highest predictions, roughly two times more positive cases are identified by the model than would be expected for a random selection of instances.
+
+```{r}
+# Produce table with gains
+gain_decile <- gains(actual = as.numeric(as.character(valid$type)), 
+                     predicted = predict(tree, valid, type = "prob")[,2])
+gain_decile
+```
+
+```{r}
+# Plot decile chart
+## Height of bars
+heights <- gain_decile$mean.resp/mean(as.numeric(as.character(valid$type)))
+
+midpoints <- barplot(heights, names.arg = gain_decile$depth, ylim = c(0,2.2),
+                     xlab = "Percentile", ylab = "Mean Response", 
+                     main = "Decile-wise chart for validation data, tree model")
+
+text(x=midpoints, y = heights, labels = round(heights, 1), pos = 3.5, cex = 0.7, col = "red")
+```
+
+```{r}
+
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(1)
+
+# Partitioning into training (60%) and validation (40%) 
+train.index <- sample(c(1:dim(aids)[1]), dim(aids)[1]*0.6)
+valid.index <- setdiff(c(1:dim(aids)[1]), train.index)  
+
+# Collect all the columns with training rows into training set 
+train_boost <- aids[train.index, ]
+valid_boost <- aids[valid.index, ]
+
+dim(train_boost)
+dim(valid_boost)
+
+
+# Boosted tree
+sum(is.na(train_boost))
+names(train_boost)
+train_boost
+boost <- boosting(as.factor(train_boost$type) ~., data = train_boost, boos=TRUE)
+boost_predict <- predict(boost, valid_boost, type = "class")
+
+# Confusion Matrix
+confusionMatrix(factor(boost_predict$class), valid_boost$type, positive = "1")
 ```
 
 
@@ -120,3 +337,41 @@ class.tree <- rpart(Personal.Loan ~ ., data = train.df, method = "class")
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Important Notes
+Resource: https://fderyckel.github.io/machinelearningwithr/trees-and-classification.html
+Important Terminology related to Decision Trees
+
+Root Node: It represents entire population or sample and this further gets divided into two or more homogeneous sets.
+
+Splitting: It is a process of dividing a node into two or more sub-nodes.
+
+Decision Node: When a sub-node splits into further sub-nodes, then it is called decision node.
+
+Leaf/ Terminal Node: Nodes do not split is called Leaf or Terminal node.
+
+Pruning: When we remove sub-nodes of a decision node, this process is called pruning. You can say opposite process of splitting.
+
+Branch / Sub-Tree: A sub section of entire tree is called branch or sub-tree.
+
+Parent and Child Node: A node, which is divided into sub-nodes is called parent node of sub-nodes where as sub-nodes are the child of parent node.
+
+
+
+9.3, 13.1, 13.2
