@@ -620,7 +620,7 @@ cp = 0. This is the complexity parameter. By setting it to 0, we don’t require
 predict_bagged <- predict(bag, test)
 
 # Create confusion matrix for classification tree
-conf_mat_tree4 <- confusionMatrix(predict_bagged, test)
+conf_mat_tree4 <- confusionMatrix(predict_bagged, test$type)
 conf_mat_tree4
 
 # Create fourfoldplot
@@ -869,8 +869,9 @@ Used 166 samples and 4 predictors with a cross-validation of 5 fold repeated onc
 pred_RFSGB <- predict(gbm, test)
 
 # Create confusion matrix for classification tree
-conf_mat_tree5  <- confusionMatrix(as.factor(pred_RFSGB), test$type, positive = "0")
-conf_mat_tree5 <- confusionMatrix(train$ype, gbm)
+conf_mat_tree5  <- confusionMatrix(pred_RFSGB, test$type)
+# I think this line below can be deleted
+# conf_mat_tree5 <- confusionMatrix(train$ype, gbm)
 
 # Create fourfoldplot
 fourfoldplot(confusionMatrix(pred_RFSGB, as.factor(test$type))$table)
