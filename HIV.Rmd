@@ -26,6 +26,7 @@ library(MASS)
 library(gridExtra)
 library(fabletools)
 library(forecast)
+library(feasts)
 ```
 
 ```{r}
@@ -92,6 +93,25 @@ summary(aids_completed$ximp)
 aids <- aids_completed$ximp
 ```
 
+
+# pre-processing: BoxCox
+
+```{r}
+
+lambda1<-BoxCox.lambda(aids$cd4)
+lambda2<-BoxCox.lambda(aids$cd8)
+lambda3<-BoxCox.lambda(aids$rna)
+
+aids$cd4 <-  BoxCox(aids$cd4, lambda1)
+aids$cd8 <-  BoxCox(aids$cd8, lambda2)
+aids$rna <-  BoxCox(aids$rna, lambda3)
+
+hist(aids$cd4)
+hist(aids$cd8)
+hist(aids$rna)
+
+```
+
 # emily's training and  test set
 ```{r}
 # Partitioning into training (60%) and validation (40%) 
@@ -99,31 +119,9 @@ train.index <- sample(c(1:dim(aids)[1]), dim(aids)[1]*0.6)
 test.index <- setdiff(c(1:dim(aids)[1]), train.index)  
 
 # Collect all the columns with training rows into training set 
-train <- aids[train.index, ]
+train <-aids[train.index, ]
 test <- aids[test.index, ]
 ```
-
-
-# pre-processing
-
-```{r}
-norm_values <- preProcess(train, method = c("center", "scale"))
-norm_train <- predict(norm_values, train)
-
-norm_values2 <- preProcess(test, method = c("center", "scale"))
-norm_test <- predict(norm_values2, test)
-
-```
-
-
-```{r}
-# Lambda per cd4
-lambda<-BoxCox.lambda(aids[,c(3)], method = c("guerrero"))
-BoxCox(aids$cd4, lambda = lambda)
-
-
-```
-
 
 # LDA (normal distributions)
  The method assumes that the data can be separated into classes based on linear combination of the input features.
@@ -136,35 +134,42 @@ Equal covariance matrices assumption:
 plot <- list()
 box_variables <- c("sex", "cd4", "cd8", "rna")
 for(i in box_variables) {
-    plot[[i]] <- ggplot(norm_train, 
-                        aes_string(x = "type", 
-                                   y = i, 
-                                   col = "type", 
-                                   fill = "type")) + 
+  plot[[i]] <- ggplot(train, aes(x = factor(type), y = get(i), fill = factor(type))) +
     geom_boxplot(alpha = 0.2) + 
     theme(legend.position = "none") + 
-    scale_color_manual(values = c("blue", "red")) +
-    scale_fill_manual(values = c("blue", "red"))
+    scale_fill_manual(values = c("blue", "red")) +
+    labs(x = "Type", y = i)
 }
+
+# Combine the boxplots into a single plot
 do.call(grid.arrange, c(plot, nrow = 1))
 ```
 
-Definitely not same covariance matrices.
+We fulfil the covariance matrix assumption.
 
 
 ```{r}
 set.seed(1)
 
 # Fit the model
-DA1 <- lda(type ~., data= norm_train)
+DA1 <- lda(type ~., data= train)
 # the response variable is the grouping factor 
 DA1
 plot(DA1)
-varplot(DA1)
 importance<- as.data.frame(melt(DA1$scaling^2))
 ggplot(importance) + geom_col(aes(x=Var1 ,y= value , fill= value), showlegend = F)+ theme_classic()
 
 ```
+
+```{r}
+predictions<- predict(DA1, test)
+DA1_test_prob<- predictions$posterior[,2]
+DA1_test_resp<-factor(predictions$class)
+test$type<-as_factor(test$type)
+confusionMatrix(DA1_test_resp, test$type, positive="1")
+```
+
+
 
 #QDA
 - Observation of each class is drawn from a normal distribution (same as LDA).
