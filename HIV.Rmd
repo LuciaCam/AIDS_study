@@ -117,9 +117,10 @@ norm_test <- predict(norm_values2, test)
 
 
 ```{r}
-boxcox(type ~ cd4 + cd8 + rna, data=aids)
+# Lambda per cd4
+lambda<-BoxCox.lambda(aids[,c(3)], method = c("guerrero"))
+BoxCox(aids$cd4, lambda = lambda)
 
-aids$type
 
 ```
 
