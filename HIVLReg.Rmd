@@ -1,0 +1,278 @@
+---
+title: "Case Study C - HIV"
+author: "Oumaima Al Qoh, Francisco Arrieta, Lucia Camenisch, Manuela Giansante, Emily Schmidt, Camille Beatrice Valera"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    toc: true # creating a table of contents (toc)
+    toc_float: 
+      collapsed: false # toc does not collapse and is shown as a sidebar (toc_float)
+    number_sections: true # document sections are numbered
+    theme: cosmo
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+```{r packages}
+library(data.table)
+library(ggplot2)
+library(e1071)
+library(missForest)
+library(caret)
+library(MASS)
+library(gridExtra)
+library(fabletools)
+library(forecast)
+```
+
+```{r}
+aids <- fread("Caids.csv")
+
+aids[, sex := as.factor(sex)]
+aids[, type := as.factor(type)]
+
+new_DF <- aids[rowSums(is.na(aids)) > 0,]
+```
+
+
+```{r}
+par(mfrow = c(3,2))
+
+hist(aids$cd4)
+hist(sqrt(aids$cd4))
+hist(aids$cd8)
+hist(sqrt(aids$cd8))
+hist(aids$rna)
+hist(log(aids$rna))
+```
+
+```{r}
+aids_melt <- melt(aids[, -1], id.vars = "type")
+ggplot(data = aids_melt[type %in% "DP",], aes(value)) + geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "DP")
+ggplot(data = aids_melt[type %in% "CP",], aes(value)) + geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "CP")
+```
+
+
+```{r}
+cor(aids[, 3:5], use = "complete.obs")
+```
+
+
+```{r}
+skewness(sqrt(aids$cd4), na.rm = TRUE)
+skewness(sqrt(aids$cd8), na.rm = TRUE)
+skewness(log(aids$rna), na.rm = TRUE)
+```
+
+```{r}
+aids[, sex := ifelse(sex == "m", 0, 1)]
+aids[, type := ifelse(type == "DP", 0, 1)]
+
+plot(aids[, 3:5], col = aids$type)
+
+summary(aids)
+```
+
+
+```{r}
+aids_completed <- missForest(aids, variablewise = TRUE)
+
+summary(aids)
+summary(aids_completed$ximp)
+```
+
+```{r}
+aids <- aids_completed$ximp
+```
+
+# emily's training and  test set
+```{r}
+# Partitioning into training (60%) and validation (40%) 
+train.index <- sample(c(1:dim(aids)[1]), dim(aids)[1]*0.6)
+test.index <- setdiff(c(1:dim(aids)[1]), train.index)  
+
+# Collect all the columns with training rows into training set 
+train <- aids[train.index, ]
+test <- aids[test.index, ]
+```
+
+
+# pre-processing
+
+```{r}
+norm_values <- preProcess(train, method = c("center", "scale"))
+norm_train <- predict(norm_values, train)
+
+norm_values2 <- preProcess(test, method = c("center", "scale"))
+norm_test <- predict(norm_values2, test)
+
+```
+
+
+```{r}
+boxcox(type ~ cd4 + cd8 + rna, data=aids)
+
+aids$type
+
+```
+
+
+# LDA (normal distributions)
+ The method assumes that the data can be separated into classes based on linear combination of the input features.
+If there is not separation in the data logit regression will out-perform LDA.
+Coefficients of linear discriminants: These display the linear combination of predictor variables that are used to form the decision rule of the LDA model. 
+However, unlike tree-based models, LDA assumes that the predictors are normally distributed and that the covariance matrices are equal for all classes, so the variable importance measures may not be appropriate for all types of data.
+
+Equal covariance matrices assumption:
+```{r}
+plot <- list()
+box_variables <- c("sex", "cd4", "cd8", "rna")
+for(i in box_variables) {
+    plot[[i]] <- ggplot(norm_train, 
+                        aes_string(x = "type", 
+                                   y = i, 
+                                   col = "type", 
+                                   fill = "type")) + 
+    geom_boxplot(alpha = 0.2) + 
+    theme(legend.position = "none") + 
+    scale_color_manual(values = c("blue", "red")) +
+    scale_fill_manual(values = c("blue", "red"))
+}
+do.call(grid.arrange, c(plot, nrow = 1))
+```
+
+Definitely not same covariance matrices.
+
+
+```{r}
+set.seed(1)
+
+# Fit the model
+DA1 <- lda(type ~., data= norm_train)
+# the response variable is the grouping factor 
+DA1
+plot(DA1)
+varplot(DA1)
+importance<- as.data.frame(melt(DA1$scaling^2))
+ggplot(importance) + geom_col(aes(x=Var1 ,y= value , fill= value), showlegend = F)+ theme_classic()
+
+```
+
+#QDA
+- Observation of each class is drawn from a normal distribution (same as LDA).
+- QDA assumes that each class has its own covariance matrix
+```{r}
+set.seed(1)
+
+# Fit the model
+DA2 <- qda(type ~., data= norm_train)
+# the response variable is the grouping factor 
+DA2
+
+importance2<- as.data.frame(melt(DA2$scaling^2))
+ggplot(importance2) + geom_col(aes(x=Var1 ,y= value , fill= Var1), showlegend = F)+ theme_classic()
+
+```
+
+
+
+
+
+# tree, bagging, boosting, random forests give importance
+
+# logistic regression importance through coeffs
+
+
+
+
+
+
+# Set seed for reproducibility
+set.seed(123)
+
+
+# Split data into 70% training and 30% testing sets
+trainIndex <- createDataPartition(aids$type, p = 0.7, list = FALSE)
+train <- aids[trainIndex,]
+test <- aids[-trainIndex,]
+
+#set.seed function is used to ensure reproducibility of the random split.
+names(aids)
+# Fit multiple linear regression model
+model <- lm(cbind(cd4, cd8, rna) ~sex + type, data = train)
+
+# Predict CD4, CD8, and RNA counts for testing set
+predicted <- predict(model, newdata = test)
+
+
+library(ggplot2)
+
+predicted <- as.numeric(predicted)
+test_cd4 <- as.numeric(test$cd4)
+test_cd8 <- as.numeric(test$cd8)
+test_rna <- as.numeric(test$rna)
+
+mae <- mean(abs(predicted - cbind(test_cd4, test_cd8, test_rna)))
+mse <- mean((predicted - cbind(test_cd4, test_cd8, test_rna))^2)
+rmse <- sqrt(mse)
+
+df <- data.frame(predicted = predicted, actual_cd4 = test_cd4, actual_cd8 = test_cd8, actual_rna = test_rna)
+
+
+# create a new variable 'variable' to represent the type of cell count
+df$variable <- rep(c('CD4', 'CD8', 'RNA'), each = nrow(test))
+
+# plot for CD4 predictions 
+plot_cd4 <- ggplot(df, aes(x = actual_cd4, y = predicted, color = variable)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  ggtitle("Predicted vs. Actual CD4 Counts") +
+  xlab("Actual CD4 Counts") +
+  ylab("Predicted CD4 Counts")
+
+# plot for CD8 predictions 
+plot_cd8 <- ggplot(df, aes(x = actual_cd8, y = predicted, color = variable)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  ggtitle("Predicted vs. Actual CD8 Counts") +
+  xlab("Actual CD8 Counts") +
+  ylab("Predicted CD8 Counts")
+
+# plot for RNA predictions 
+plot_rna <- ggplot(df, aes(x = actual_rna, y = predicted, color = variable)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  ggtitle("Predicted vs. Actual RNA Counts") +
+  xlab("Actual RNA Counts") +
+  ylab("Predicted RNA Counts")
+
+# combine all plots into one
+library(gridExtra)
+
+grid.arrange(plot_cd4, plot_cd8, plot_rna, ncol = 2)
+
+
+
+# Assess significance of coefficients
+summary(model)
+
+
+coef(model)
+# 
+
+
+plot(resid(model) ~ fitted(model))
+
+#the coefficient for the "type" variable is significant, with a negative estimate, "type" variable (i.e. whether the couple is classified as "DP" or "CP") is important in discriminating between the two groups SINCE the coefficient estimate for the variable "type" is statistically significant and negative for the CD4 and CD8 responses, indicating that on average, CD4 and CD8 counts are lower in discordant couples compared to concordant couples. For the RNA response, the coefficient estimate for the variable "type" is statistically significant and positive, indicating that on average, RNA counts are higher in discordant couples compared to concordant couples
+
+#R-squared values for all three models are quite low
+# sex and type= small prop
+
+#other factors may also be important in discriminating between DP and CP couples
