@@ -101,15 +101,6 @@ norm_aids <- predict(norm_values, aids)
 ```
 
 
-## boxcox under lucia suggestion
-
-It transforms a non-normal dependent variables into a normal shape.
-
-```{r}
-bcx_aids<- box_cox(aids, lambda=1)
-
-```
-
 
 # LDA (normal distributions)
  The method assumes that the data can be separated into classes based on linear combination of the input features.
