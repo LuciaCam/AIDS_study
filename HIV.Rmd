@@ -164,9 +164,9 @@ ggplot(importance) + geom_col(aes(x=Var1 ,y= value , fill= value), showlegend = 
 ```{r}
 predictions<- predict(DA1, test)
 DA1_test_prob<- predictions$posterior[,2]
-DA1_test_resp<-factor(predictions$class)
+DA1_test_resp<-as_factor(predictions$class)
 test$type<-as_factor(test$type)
-confusionMatrix(DA1_test_resp, test$type, positive="1")
+fourfoldplot(confusionMatrix(DA1_test_resp, test$type, positive="1"))
 ```
 
 
