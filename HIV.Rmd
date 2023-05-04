@@ -124,8 +124,12 @@ test <- aids[test.index, ]
 ```
 
 # LDA (normal distributions)
+
+ LDA works by finding a linear combination of the predictors that maximizes the separation between the classes, while minimizing the variation within each class. 
+
  The method assumes that the data can be separated into classes based on linear combination of the input features.
 If there is not separation in the data logit regression will out-perform LDA.
+
 Coefficients of linear discriminants: These display the linear combination of predictor variables that are used to form the decision rule of the LDA model. 
 However, unlike tree-based models, LDA assumes that the predictors are normally distributed and that the covariance matrices are equal for all classes, so the variable importance measures may not be appropriate for all types of data.
 
@@ -161,24 +165,60 @@ ggplot(importance) + geom_col(aes(x=Var1 ,y= value , fill= value), showlegend = 
 
 ```
 
+                    Actual Positive     Actual Negative
+Predicted Positive   True Positive   False Positive
+Predicted Negative   False Negative  True Negative
+
+The four entries in the confusion matrix correspond to:
+
+True Positive (TP): the number of instances that are correctly classified as positive (i.e., the classifier correctly identifies the positive cases).
+False Positive (FP): the number of instances that are incorrectly classified as positive (i.e., the classifier identifies negative cases as positive).
+False Negative (FN): the number of instances that are incorrectly classified as negative (i.e., the classifier identifies positive cases as negative).
+True Negative (TN): the number of instances that are correctly classified as negative (i.e., the classifier correctly identifies the negative cases).
+From these four entries, we can compute various performance metrics that are commonly used to evaluate the performance of a classifier. Two of the most commonly used metrics are sensitivity and specificity:
+
+Sensitivity (also known as recall or true positive rate) is the proportion of true positives among all actual positives:
+
+Sensitivity = TP / (TP + FN)
+
+In other words, sensitivity measures the ability of the classifier to correctly identify the positive cases.
+
+Specificity (also known as true negative rate) is the proportion of true negatives among all actual negatives:
+
+Specificity = TN / (TN + FP)
+
+In other words, specificity measures the ability of the classifier to correctly identify the negative cases.
+
+Both sensitivity and specificity are important metrics for evaluating the performance of a classifier. In general, a good classifier should have high values of both sensitivity and specificity, although the relative importance of these metrics may depend on the specific application. For example, in a medical diagnostic test, high sensitivity is typically more important than high specificity, since a false negative result (i.e., a positive case incorrectly classified as negative) can have serious consequences.
+
+
 ```{r}
 predictions<- predict(DA1, test)
 DA1_test_prob<- predictions$posterior[,2]
 DA1_test_resp<-as_factor(predictions$class)
 test$type<-as_factor(test$type)
-fourfoldplot(confusionMatrix(DA1_test_resp, test$type, positive="1"))
+fourfoldplot(confusionMatrix(DA1_test_resp, as.factor(test$type))$table)
+confusionMatrix(DA1_test_resp, as.factor(test$type))
+# positive class 0!!!!!
+# can be switched
 ```
 
+Accuracy : 0.7143
+Sensitivity : 0.9024
+Specificity : 0.2000
 
 
 #QDA
+
+QDA works by finding a quadratic function of the predictors that maximizes the separation between the classes, while minimizing the variation within each class.
+
 - Observation of each class is drawn from a normal distribution (same as LDA).
 - QDA assumes that each class has its own covariance matrix
 ```{r}
 set.seed(1)
 
 # Fit the model
-DA2 <- qda(type ~., data= norm_train)
+DA2 <- qda(type ~., data= train)
 # the response variable is the grouping factor 
 DA2
 
@@ -187,9 +227,17 @@ ggplot(importance2) + geom_col(aes(x=Var1 ,y= value , fill= Var1), showlegend = 
 
 ```
 
+```{r}
 
-
-
+predictions2<- predict(DA2, test)
+DA2_test_prob<- predictions$posterior[,2]
+DA2_test_resp<-as_factor(predictions2$class)
+fourfoldplot(confusionMatrix(DA2_test_resp, as.factor(test$type))$table)
+confusionMatrix(DA2_test_resp, as.factor(test$type))
+```
+ Accuracy 0.70
+Sensitivity : 0.8780 
+Specificity : 0.2333
 
 # tree, bagging, boosting, random forests give importance
 
