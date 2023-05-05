@@ -1,0 +1,232 @@
+---
+title: "MABAn Consulting Case"
+author: Manuela Giansante, Emily Schmidt, Francisco Arrieta, Lucia Camenisch, Camille
+  Valera, Oumaima Al Qoh
+date: "2023-05-05"
+output: 
+html_document:
+  toc:true
+  toc_float:true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message = FALSE, warning = FALSE, fig.align = "center")
+```
+
+```{r packages}
+#necessary packages
+library(data.table)
+library(ggplot2)
+library(e1071)
+library(missForest)
+library(caret)
+library(MASS)
+library(gridExtra)
+library(fabletools)
+library(forecast)
+library(feasts)
+library(forcats)
+```
+
+
+## Purpose of the case-study:
+
+The purpose of this case study is to see if these three measures (i.e. CD4, CD8 and RNA counts) provide ‘discrimination’ between two groups of couples classified as ‘Discordinant’ (DP: only one partner HIV-positive) and ‘Concordinant’ (CP: both HIV-positive). Only one partner from each couple was included in the study, with the infected partner being measured in the DP group. This provided a more homogeneous cohort, and to eliminate confounding effects, drug users and nonmonogamous couples were excluded.
+
+So the purpose of our case study is to predict whether the couple is concordinant or discordinant. The performance of this classification job is outside of the scope of what we want to ask you. But we thought to include it for clarity.
+The main job is to understand what of the 3 variables (cd4, cd8, rna) is most important in the prediction.
+Now this is something that must be done with machine learning methods. What we want to interrogate you on is if the behaviour of the data we are provided with seems realistic enough or if we should expect something else.
+
+We will try to go throught eveyrthing in the most efficient way so to not take up much of your time. Thank you, for you attention!
+
+
+## Importing the data and first exploration
+
+We import the data set, we will describe it briefly the best we can, to also indicate what we know.
+
+– sex: gender of patient (f = ‘female’, m = ‘male’);
+– type: ‘CP’ if both patient and their partner are infected, ‘DP’ if patient’s
+partner is not infected;
+– cd4, cd8, rna: cell counts of patient
+
+
+```{r}
+# Import the data
+aids <- fread("Caids.csv")
+aids
+
+# format transformations to use plotting functions
+aids[, sex := as.factor(sex)]
+aids[, type := as.factor(type)]
+
+# here we are selectign all the rows in the aids data set which has missing values
+new_DF <- aids[rowSums(is.na(aids)) > 0,]
+```
+
+
+
+```{r}
+# Plot the data
+par(mfrow = c(3,2))
+
+hist(aids$cd4)
+hist(sqrt(aids$cd4))# square root
+hist(aids$cd8)
+hist(sqrt(aids$cd8)) # square root
+hist(aids$rna)
+hist(log(aids$rna))# natural log of the rna data
+```
+
+- The histograms on the right are the distributions/densities of the untransformed data
+- The histograms on the left are the transformed columns
+ We applied the transformations because to perform some of prediction models we need for the case (not reported here) we need to fulfil some normality of distribution assumptions
+
+### Histograms of cd4,cd8, rna by type (DP, CP)
+
+Here, what we want to observe how the cd4, cd8 and rna distributes depending on whether the couple is ‘Discordinant’ (DP) or ‘Concordinant’ (CP):
+
+```{r}
+# the melt function is only a re-organizaiton of the data table we need to perform
+# to be able to plot these data divided by DP and CP
+aids_melt <- melt(aids[, -1], id.vars = "type")
+
+# bar plots
+ggplot(data = aids_melt[type %in% "DP",], aes(value)) + geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "DP")
+ggplot(data = aids_melt[type %in% "CP",], aes(value)) + geom_histogram() +
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "CP")
+```
+
+## Correlation matrix of cd4, cd8, rna
+
+We reporta very simple correlation matrix of these 3 measures:
+
+```{r}
+cor(aids[, 3:5], use = "complete.obs")
+```
+
+- cd8 and rna are not highly correlated;
+- neither are cd4 and rna;
+- cd4 and cd8 are the most correlated pair
+
+# Skewdness of the transformed data
+
+```{r}
+skewness(sqrt(aids$cd4), na.rm = TRUE)
+skewness(sqrt(aids$cd8), na.rm = TRUE)
+skewness(log(aids$rna), na.rm = TRUE)
+```
+This is performed to just gather how not normally distributed these measures are. (normally distributed -> bell shaped distribution plot)
+
+## Scatter plot of untrasformed data (not normally distributed)
+```{r}
+# here we simply code the categorical values to be dummies
+aids[, sex := ifelse(sex == "m", 0, 1)] # 0 for male, 1 for female
+aids[, type := ifelse(type == "DP", 0, 1)] # 0 for discordinant, 1 for concordinant couple
+
+# scatter plot of cd4, cd8, rna based on type
+plot(aids[, 3:5], col = as_factor(aids$type))
+
+# summary of the data:
+# main statistics and how many missing values (NAs) are for each columns
+summary(aids)
+
+```
+
+We coloured the points based on whether the couple is DP or CP. 
+The proposed scatterplot plots how the 3 measures we are interested in behave against one another
+
+**Is their behaviour particularly uncommon, what one should expect in a real life case?**
+
+- cd8 vs rna (row 2, column 3 & row 3, column 2): as rna grows, cd8 does not. They had a small correlation, do they usually move together? or do they not? this non-correlated behaviour is it something that we should expect?
+- cd8 vs cd4 (row 1, column 2 & row 2, column 1) : we saw that they had an almost 0.5 correlation in fact we see that they are directly proportional to one another.
+- cd4 vs rna (row 3, column 1 & row 1, column 3): as cd4 grows, rna does not it seems to remain in low levels
+
+*to be reminded that her we are still dealing with a data set that has a lot of missing values*
+
+## Populating the data
+
+So when we imported the data, we saw that there were lot of missing values especially in the rna measure. What we decided to do is to "populated"/ randomly re-sample those missing values. We do so because otherwise the already small data-set would be reduced to a too small data-set, which for statistical reasons is not good. We would not be able to gather significant informations and conclusions from such a small data set.
+
+
+`missForest()` is a function from the missForest package in R that imputes missing values in a dataset using a random forest algorithm.
+`variablewise = TRUE` specifies that the imputation should be done separately for each variable in the dataset.
+
+**From documentation of the function:**
+'missForest' is used to impute missing values particularly in the case of mixed-type data. It can be used to impute continuous and/or categorical data including complex interactions and non-linear relations. It yields an out-of-bag (OOB) imputation error estimate. Moreover, it can be run parallel to save computation time.
+
+In simpler words, it randomly selects already existing data-points to then fill the missing "spots", for each variable. So the generated data is not simply random, it maintains coherence, but of course it canonly resample from a finite set of numbers, it does not add any information. It generates a plausible scenario.
+
+```{r}
+# repopulation of the dtaa
+aids_completed <- missForest(aids, variablewise = TRUE)
+
+summary(aids)
+
+#	imputed data matrix of same type as 'xmis'.
+summary(aids_completed$ximp)
+```
+
+We now rename our data set to be the completed data set
+```{r}
+aids <- aids_completed$ximp
+aids
+```
+
+
+#### Histograms of populated cd4, cd8 and rna
+
+```{r}
+par(mfrow = c(1,3))
+hist(aids$cd4)
+hist(aids$cd8)
+hist(aids$rna)
+
+# correlation and scatterplot
+cor(aids[, c(3,4,5)])
+plot(aids[, c(3,4,5)])
+```
+
+Plotting the densities/distributions of the completed data set variables. They still do not appear to be normally distributed.
+The scatter plot are of the not normalized but re-populated data.
+
+## BoxCox transformation
+
+Here we transform our continuous variables to be normally distributed. We also report this section, because we thought it would be important for the sake of completion and clarity. We do not know if this transformation is considered appropriate in the filed. But to use machine learning methods, we must fulfil some assumptions the statistical models make. We do not report the prediction models performed because it is outside of the scope of our question. 
+
+```{r}
+# selection of optimal boxcox parameter for the tranformation
+# the optimal lamda will allows us to have normally distrbuted variables
+lambda1<-BoxCox.lambda(aids$cd4)
+lambda2<-BoxCox.lambda(aids$cd8)
+lambda3<-BoxCox.lambda(aids$rna)
+
+# transformation
+aids$cd4 <-  BoxCox(aids$cd4, lambda1)
+aids$cd8 <-  BoxCox(aids$cd8, lambda2)
+aids$rna <-  BoxCox(aids$rna, lambda3)
+
+# Transformed data scatter plots
+par(mfrow = c(1,3))
+hist(aids$cd4)
+hist(aids$cd8)
+hist(aids$rna)
+
+#correlation and scatter plot
+cor(aids[, c(3,4,5)])
+plot(aids[, c(3,4,5)])
+
+```
+
+Same as in the previous section, we would like to know, now that cd4, cd8 and rna have been transformed to take a normal distribution:
+
+**Is their behaviour particularly uncommon, what one should expect in a real life case?**
+- cd8 vs rna (row 2, column 3 & row 3, column 2): they seem to move together a bit more, when rna is low tho cd8 moves independently, but also we have more movements for some higher values of both.
+- cd8 vs cd4 (row 1, column 2 & row 2, column 1) : directly proportional
+- cd4 vs rna (row 3, column 1 & row 1, column 3): not veyr correlated
+
+We have also reported the correlation now that we have transformed them, there seem to be not much an improvement with the cd4, rna and cd8,rna relationships.
+
+We conclude here, thank you for your attention!
