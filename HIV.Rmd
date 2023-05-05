@@ -165,6 +165,8 @@ hist(aids$cd4)
 hist(aids$cd8)
 hist(aids$rna)
 
+plot(aids)
+
 ```
 
 # emily's training and  test set

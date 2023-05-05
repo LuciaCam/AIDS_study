@@ -191,27 +191,56 @@ ggplot(importance2) + geom_col(aes(x=Var1 ,y= value , fill= Var1), showlegend = 
 
 
 
+```{r}
+# # Set seed for reproducibility
+# set.seed(123)
+# # Split data into 70% training and 30% testing sets
+# trainIndex <- createDataPartition(aids$type, p = 0.7, list = FALSE)
+# train <- aids[trainIndex,]
+# test <- aids[-trainIndex,]
+```
+
+```{r}
+hist(aids$rna)
+
+aids <- aids_completed$ximp
+train.index <- sample(c(1:dim(aids)[1]), dim(aids)[1]*0.6)
+test.index <- setdiff(c(1:dim(aids)[1]), train.index)  
+
+# Collect all the columns with training rows into training set 
+train <- aids[train.index, ]
+test  <- aids[test.index, ]
+```
 
 
-
-# Set seed for reproducibility
-set.seed(123)
-
-
-# Split data into 70% training and 30% testing sets
-trainIndex <- createDataPartition(aids$type, p = 0.7, list = FALSE)
-train <- aids[trainIndex,]
-test <- aids[-trainIndex,]
-
+```{r}
 #set.seed function is used to ensure reproducibility of the random split.
-names(aids)
+# names(aids)
 # Fit multiple linear regression model
-model <- lm(cbind(cd4, cd8, rna) ~sex + type, data = train)
 
+# linear regression is made for predicting continuous repsonse, not a binary variable.
+# logistic regression should be used here, with function glm
+# moreover, the response is type and all other features of our dataset are the predictors,
+# thus the formula to be used is type ~.
+# model <- lm(cbind(cd4, cd8, rna) ~sex + type, data = train)
+model <- glm(formula =  type ~ ., data = train)
+summary(model)
+```
+
+
+```{r}
 # Predict CD4, CD8, and RNA counts for testing set
-predicted <- predict(model, newdata = test)
+type_pred <- predict(model, newdata = test)
+type_pred
+type_pred <- round(type_pred)
+```
+
+```{r}
+confusionMatrix(data = as.factor(type_pred), reference = as.factor(test$type))
+```
 
 
+```{r}
 library(ggplot2)
 
 predicted <- as.numeric(predicted)
@@ -222,6 +251,16 @@ test_rna <- as.numeric(test$rna)
 mae <- mean(abs(predicted - cbind(test_cd4, test_cd8, test_rna)))
 mse <- mean((predicted - cbind(test_cd4, test_cd8, test_rna))^2)
 rmse <- sqrt(mse)
+```
+
+
+
+
+
+
+
+
+
 
 df <- data.frame(predicted = predicted, actual_cd4 = test_cd4, actual_cd8 = test_cd8, actual_rna = test_rna)
 
