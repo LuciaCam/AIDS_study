@@ -1143,7 +1143,7 @@ fourfoldplot(confusionMatrix(predict_model,as.factor(test$type))$table, conf.lev
 kable_styling(kable(round(100*model$variable.importance / sum(model$variable.importance), 2), col.names = "Importance %"), full_width = TRUE) |>  kable_classic() 
 
 fancyRpartPlot(model, uniform = TRUE, caption = NULL, palettes = "OrRd", digits = -3)
-)
+
 
 ```
 
@@ -1153,7 +1153,7 @@ type_pred <- predict(model, newdata = test, type = 'prob')
 
 type_pred_class <- ifelse(type_pred >= 0.3, 1, 0)
 
-confusionMatrix(data = as.factor(type_pred_class), reference = as.factor(test$type), positive = "1")
+confusionMatrix(data = as.factor(type_pred_class[,2]), reference = as.factor(test$type), positive = "1")
 ```
 
 ```{r}
@@ -1259,20 +1259,11 @@ CutSensSpec[1, 1] = 1
 ```
 
 ```{r}
-ggplot(CutSensSpec, aes(x = Cutoff)) +
-  geom_line(aes(y = Sensitivity, color = "Sensitivity")) +
-  geom_line(aes(y = Specificity, color = "Specificity")) +
-  geom_line(aes(y = Accuracy, color = "Accuracy")) +
-  scale_color_manual(name = "", 
-                     values = c("Sensitivity" = "#f98e5a", 
-                                "Specificity" = "#9cc9de", 
-                                "Accuracy" = "blue")) +
-  labs(x = "Cutoff Value", 
-       y = "Specificity or Sensitivity (fraction)",
-       title = "Specificity and Sensitivity versus Cutoff Value") +
-  theme_minimal()+
-  geom_vline(xintercept = .3, linetype = "dashed", color = "black")
+CutSensSpec <- CutSensSpec[order(nrow(CutSensSpec):1),]
+CutSensSpec <- CutSensSpec[rep(seq_len(nrow(CutSensSpec)), each = 2), ]
+CutSensSpec[2:15, 2:4] <- CutSensSpec[3:16, 2:4]
 ```
+
 
 ```{r}
 ggplot(CutSensSpec, aes(x = Cutoff)) +
@@ -1288,6 +1279,22 @@ ggplot(CutSensSpec, aes(x = Cutoff)) +
        title = "Specificity and Sensitivity versus Cutoff Value") +
   theme_minimal()+
   geom_vline(xintercept = .25, linetype = "dashed", color = "black")
+```
+
+```{r}
+ggplot(CutSensSpec, aes(x = Cutoff)) +
+  geom_line(aes(y = Sensitivity, color = "Sensitivity")) +
+  geom_line(aes(y = Specificity, color = "Specificity")) +
+  geom_line(aes(y = Accuracy, color = "Accuracy")) +
+  scale_color_manual(name = "", 
+                     values = c("Sensitivity" = "#f98e5a", 
+                                "Specificity" = "#9cc9de", 
+                                "Accuracy" = "blue")) +
+  labs(x = "Cutoff Value", 
+       y = "Specificity or Sensitivity (fraction)",
+       title = "Specificity and Sensitivity versus Cutoff Value") +
+  theme_minimal()+
+  geom_vline(xintercept = .5, linetype = "dashed", color = "black")
 ```
 
 ```{r}
