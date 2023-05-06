@@ -20,14 +20,16 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align =
 library(data.table)
 library(missForest)
 library(caret)       # confusion matrix
-# library(ggplot2)
+library(ROCR)        # ROC curve to choose cutoff
+library(ggplot2)
+library(forecast)    # BoxCox
 # library(e1071)
-
 # library(MASS)
 # library(gridExtra)
 # library(fabletools)
-# library(forecast)
 ```
+
+# import data
 
 ```{r}
 aids <- fread("Caids.csv")
@@ -35,6 +37,7 @@ aids[, sex := as.factor(sex)]
 aids[, type := factor(type, levels = c("DP", "CP"), ordered = TRUE)]
 ```
 
+# missing values imputation
 
 ```{r}
 set.seed(256)
@@ -47,6 +50,8 @@ aids[, sex := as.numeric(sex) - 1]
 aids[, type := as.numeric(type) - 1]
 ```
 
+# train-test partitioning
+
 ```{r}
 # Partitioning into training (60%) and validation (40%) 
 set.seed(1)
@@ -58,22 +63,113 @@ train <- aids[train.index, ]
 test <- aids[test.index, ]
 ```
 
+# scaling numerical predictors
+
 
 ```{r}
-model <- glm(formula =  type ~ ., data = train, family = 'binomial')
+scaled_train <- scale(train[, c(3:5)])
+train$cd4 <- scaled_train[, 1]
+train$cd8 <- scaled_train[, 2]
+train$rna <- scaled_train[, 3]
+```
+
+
+```{r}
+means <- attributes(scaled_train)$`scaled:center`
+sds <- attributes(scaled_train)$`scaled:scale`
+means
+sds
+```
+
+```{r}
+test[, cd4 := (cd4 - means[1])/sds[1]]
+test[, cd8 := (cd8 - means[2])/sds[2]]
+test[, rna := (rna - means[3])/sds[3]]
+```
+
+
+
+# basic logistic regression
+
+With cutoff at 0.5, logistic regression with
+
+- cd8, rna
+- cd8, rna, sex
+- cd8, rna, cd4
+- cd8, rna, sex, cd4
+
+all give exactly the same predictions. All models which do not contain cd8 and rna perform worse.
+
+
+```{r}
+model <- glm(formula =  type ~ cd8 + rna, data = train, family = 'binomial')
 summary(model)
 ```
 
+# logistic regression confusion matrix
 
 ```{r}
 # Predict CD4, CD8, and RNA counts for testing set
 type_pred <- predict(model, newdata = test, type = 'response')
 type_pred <- round(type_pred)
+
+CM <- confusionMatrix(data = as.factor(type_pred), reference = as.factor(test$type), positive = "1")
+CM
+```
+
+# ROC curve
+
+```{r}
+type_pred <- predict(model, newdata = test, type = 'response')
+# prediction() creates an object of "formal class prediction" which contains information about the
+# predicted probabilities and the actual values of the validation set.
+Predictions = prediction(predictions = type_pred, labels = test$type)
+Predictions
+# our "formal class prediction" object serves as input for the performance() function.
+# the second argument of performance will specify which characteristic should be computed with
+# respect to the cutoff value. It computes the characteristic for 2000 different values of the cutoff
+SensPerf = performance(Predictions, "sens")  # computing sensitivity wrt cutoff
+SensPerf
+SpecPerf = performance(Predictions, "spec")  # computing specificity wrt cutoff
+SpecPerf
+# SensPerf and SpecPerf are "formal class performance" objects.
+AccPerf = performance(Predictions, "acc")
+AccPerf
+```
+```{r}
+# we create a data table which contains the cutoff, the sensitivity and the specificity values
+CutSensSpec = data.table(     Cutoff = SensPerf@x.values[[1]],  # use @ to access content inside
+                         Sensitivity = SensPerf@y.values[[1]],  # formal class (S4) objects
+                         Specificity = SpecPerf@y.values[[1]],
+                            Accuracy =  AccPerf@y.values[[1]])
+CutSensSpec[1, 1] = 1
 ```
 
 ```{r}
+ggplot(CutSensSpec, aes(x = Cutoff, y = Sensitivity, color = "Sensitivity")) + geom_line() +
+  geom_line(mapping = aes(y = Specificity, color = "Specificity")) +
+  geom_line(mapping = aes(y = Accuracy, color = "Accuracy")) +
+  theme_light() +                                                # aesthetic theme of plot
+  labs(x = "Cutoff Value",                                       # labels of the plot
+       y = "Specificity or Sensitivity (fraction)",
+       title = "Specificity and Sensitivity versus Cutoff Value",
+       color = "")
+```
+
+```{r}
+CutSensSpec[, Diff := abs(Specificity - Sensitivity)]   # creating Diff
+MinDiff = CutSensSpec[Diff %in% min(Diff),]             # getting the line in table with OptCutoff
+MinDiff
+OptCutoff = as.numeric(MinDiff[1, 1])                   # getting OptCutoff
+```
+
+```{r}
+type_pred <- predict(model, newdata = test, type = 'response')
+type_pred <- ifelse(type_pred >= 0.3, 1, 0)
 confusionMatrix(data = as.factor(type_pred), reference = as.factor(test$type), positive = "1")
 ```
+
+
 
 
 
