@@ -1018,3 +1018,290 @@ Branch / Sub-Tree: A sub section of entire tree is called branch or sub-tree.
 Parent and Child Node: A node, which is divided into sub-nodes is called parent node of sub-nodes where as sub-nodes are the child of parent node.
 
 9.3, 13.1, 13.2
+
+
+
+```{r packages}
+library(data.table)
+library(ggplot2)
+library(e1071)
+library(missForest)
+library(caret)
+library(MASS)
+library(gridExtra)
+```
+
+```{r}
+aids <- fread("Caids.csv")
+aids[, sex := as.factor(sex)]
+aids[, type := factor(type, levels = c("DP", "CP"), ordered = TRUE)]
+```
+
+
+```{r}
+set.seed(256)
+aids_completed <- missForest(aids, variablewise = TRUE)
+aids <- aids_completed$ximp
+```
+
+```{r}
+aids[, sex := as.numeric(sex) - 1]
+aids[, type := as.numeric(type) - 1]
+```
+
+## Trees: Data Partitioning
+
+```{r}
+library(rpart) # Used for building classification and regression trees
+library(RColorBrewer)
+library(rattle)  # Graphical Data Interface
+library(rpart.plot) # Automatically scales and adjusts the displayed tree for best fit
+library(gains)
+library(adabag)
+library(randomForest)
+library(lift) # TopDecileLift()
+library(caret)
+library(kableExtra)
+library(vip)
+library(tidyverse) # Data manipulation
+library(xgboost) # Fitting the xgboost model
+library(pROC)
+library(ipred)       #for fitting bagged decision trees
+
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(1)
+
+# Partitioning into training (60%) and validation (40%) 
+train.index <- sample(c(1:dim(aids)[1]), dim(aids)[1]*0.6)
+test.index <- setdiff(c(1:dim(aids)[1]), train.index)  
+
+# Collect all the columns with training rows into training set 
+train <- aids[train.index, ]
+test <- aids[test.index, ]
+```
+
+## Deep Classification Decision Tree
+
+```{r Deep Tree}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(450)
+
+# Create deep tree (page 219)
+deep_class_tree <- rpart(formula = type ~ ., data = train, method = "class", control = rpart.control(maxdepth = 30))
+
+# Generates a cost complexity parameter table that provides the complexity parameter value
+#summary(deep_class_tree)
+
+# Plot tree
+prp(deep_class_tree, type = 1, extra = 1, under = TRUE, split.font = 1, varlen = -10, box.col  = ifelse(deep_class_tree$frame$var == "<leaf>", 'lightblue', 'white'))
+
+# Count number of leaves 
+length(deep_class_tree$frame$var[deep_class_tree$frame$var == "<leaf>"]) 
+
+# Variable importance, deep tree
+kable_styling(kable(round(100*deep_class_tree$variable.importance / sum(deep_class_tree$variable.importance), 2), col.names = "Importance %"), full_width = TRUE) |>  kable_classic() 
+
+printcp(deep_class_tree)
+
+#Get the lowest CP value from CP table
+deep_class_tree$cptable[which.min(deep_class_tree$cptable[,"xerror"]),"CP"]
+
+predict_model2 <- predict(deep_class_tree, test, type = "class")
+
+# Create confusion matrix for classification tree
+conf_mat_tree1  <- confusionMatrix(predict_model2, as.factor(test$type))
+conf_mat_tree1
+
+# Create fourfoldplot
+fourfoldplot(confusionMatrix(predict_model2, as.factor(test$type))$table)
+
+
+
+```
+
+```{r}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
+model = rpart(formula = type ~ ., data = train, method = "class")
+
+rpart.plot(model)
+print(model) 
+
+predict_model <- predict(model, test, type = "class")
+
+# Create confusion matrix for classification tree
+conf_mat_tree1  <- confusionMatrix(predict_model, as.factor(test$type), positive = "1")
+conf_mat_tree1
+
+# Create fourfoldplot
+fourfoldplot(confusionMatrix(predict_model,as.factor(test$type))$table, conf.level = 0)
+
+ fourfoldplot(confusionMatrix(predict_model,as.factor(test$type))$table, conf.level = 0, std = "all.max", color = c("#f98e5a", "#9cc9de"))
+
+# Variable importance, deep tree
+kable_styling(kable(round(100*model$variable.importance / sum(model$variable.importance), 2), col.names = "Importance %"), full_width = TRUE) |>  kable_classic() 
+
+fancyRpartPlot(model, uniform = TRUE, caption = NULL, palettes = "OrRd", digits = -3)
+)
+
+```
+
+
+```{r}
+type_pred <- predict(model, newdata = test, type = 'prob')
+
+type_pred_class <- ifelse(type_pred >= 0.3, 1, 0)
+
+confusionMatrix(data = as.factor(type_pred_class), reference = as.factor(test$type), positive = "1")
+```
+
+```{r}
+# Load the ggplot2 package
+library(ggplot2)
+
+# Create a data frame with the data and labels
+df <- data.frame(data = c(44.43, 31.36, 23.81, 0.40),
+                 labels = c("rna", "cd8", "cd4", "sex"))
+
+df$labels <- reorder(df$labels, +df$data)
+
+# Create the plot using ggplot2
+ggplot(df, aes(x = data, y = labels, fill = "#9cc9de")) +
+  geom_bar(stat = "identity") +
+  labs(x = "Percentage", y = "Predictors") + 
+  scale_fill_identity() +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 10)) +
+  theme(axis.text.x = element_text(size = 10)) 
+```
+
+-   Upper left: True Negative - You predicted negative and it's true.\
+-   Lower left: False Negative - You predicted negative and it's false, leading to a Type II error\
+-   Upper right: False Positive - You predicted positive and it's false, which is a Type I error\
+-   Lower right: True Positive - You predicted positive and it's true.\
+
+Recall: From all positive classes, how many we predicted correctly. This value should be as high as possible.\
+$$Recall =  \frac{TP}{TP + FN}$$
+
+```{r Deep Tree Recall}
+deep_recall1 <- conf_mat_tree1$byClass[6]
+deep_recall1
+```
+
+The recall score is 78.3%.\
+
+Precision: From all the classes we have predicted as positive, how many are actually positive. This value should be as high as possible.\
+$$Recall =  \frac{TP}{TP + FP}$$
+
+```{r Deep Tree Precision}
+deep_precision1 <- conf_mat_tree1$byClass[5]
+deep_precision1
+```
+
+The precision score is 73.8%.\
+
+```{r Acc Spec Spec Deep Tree}
+# Accuracy and specificity for tree
+tree_res1 = c(conf_mat_tree1$overall[1], conf_mat_tree1$byClass[1], conf_mat_tree1$byClass[2])
+
+tree_res1
+```
+
+Accuracy: From all the classes (positive and negative), how many of them we have predicted correctly. This value should be as high as possible.\
+Sensitivity: The proportion of true positives among all actual positives. In other words, sensitivity measures how well the model identifies the positive class. Higher the value, the better!\
+$$ Sensitivty = TP/(TP+FN)$$
+
+Specificity: The proportion of true negatives among all actual negatives. In other words, specificity measures how well the model identifies the negative class. Higher the value, the better!\
+$$ Specificity = TN/(TN+FP)$$
+
+The accuracy s 63.3%, while Sensitivity is 78.3% and Specificity is 20.7%. This model does not predict the negative class as well.\
+
+F-measure: It is difficult to compare two models with low precision and high recall or vice versa. So to make them comparable, we use F-Score. F-score helps to measure Recall and Precision at the same time. It uses Harmonic Mean in place of Arithmetic Mean by punishing the extreme values more.\
+$$F-measure =  \frac{2*Recall*Precision}{Recall + Precision}$$
+
+```{r Deep Tree F-measure}
+(2*deep_recall1 * deep_precision1)/(deep_recall1 + deep_precision1)
+```
+
+The f-measure score is 76.2%.
+
+```{r}
+library(ROCR)
+# ROC curve to choose cutoff
+type_pred <- predict(model, newdata = test, type = 'prob')
+type_pred
+# prediction() creates an object of "formal class prediction" which contains information about the
+# predicted probabilities and the actual values of the validation set.
+Predictions = prediction(type_pred[, 2], test$type)
+Predictions
+# our "formal class prediction" object serves as input for the performance() function.
+# the second argument of performance will specify which characteristic should be computed with
+# respect to the cutoff value. It computes the characteristic for 2000 different values of the cutoff
+SensPerf = performance(Predictions, "sens")  # computing sensitivity wrt cutoff
+SensPerf
+SpecPerf = performance(Predictions, "spec")  # computing specificity wrt cutoff
+SpecPerf
+# SensPerf and SpecPerf are "formal class performance" objects.
+AccPerf = performance(Predictions, "acc")
+AccPerf
+
+```
+
+
+```{r}
+# we create a data table which contains the cutoff, the sensitivity and the specificity values
+CutSensSpec = data.table(     Cutoff = SensPerf@x.values[[1]],  # use @ to access content inside
+                         Sensitivity = SensPerf@y.values[[1]],  # formal class (S4) objects
+                         Specificity = SpecPerf@y.values[[1]],
+                            Accuracy =  AccPerf@y.values[[1]])
+CutSensSpec[1, 1] = 1
+```
+
+```{r}
+ggplot(CutSensSpec, aes(x = Cutoff)) +
+  geom_line(aes(y = Sensitivity, color = "Sensitivity")) +
+  geom_line(aes(y = Specificity, color = "Specificity")) +
+  geom_line(aes(y = Accuracy, color = "Accuracy")) +
+  scale_color_manual(name = "", 
+                     values = c("Sensitivity" = "#f98e5a", 
+                                "Specificity" = "#9cc9de", 
+                                "Accuracy" = "blue")) +
+  labs(x = "Cutoff Value", 
+       y = "Specificity or Sensitivity (fraction)",
+       title = "Specificity and Sensitivity versus Cutoff Value") +
+  theme_minimal()+
+  geom_vline(xintercept = .3, linetype = "dashed", color = "black")
+```
+
+```{r}
+ggplot(CutSensSpec, aes(x = Cutoff)) +
+  geom_line(aes(y = Sensitivity, color = "Sensitivity")) +
+  geom_line(aes(y = Specificity, color = "Specificity")) +
+  geom_line(aes(y = Accuracy, color = "Accuracy")) +
+  scale_color_manual(name = "", 
+                     values = c("Sensitivity" = "#f98e5a", 
+                                "Specificity" = "#9cc9de", 
+                                "Accuracy" = "blue")) +
+  labs(x = "Cutoff Value", 
+       y = "Specificity or Sensitivity (fraction)",
+       title = "Specificity and Sensitivity versus Cutoff Value") +
+  theme_minimal()+
+  geom_vline(xintercept = .25, linetype = "dashed", color = "black")
+```
+
+```{r}
+type_pred <- predict(model, newdata = test, type = 'prob')
+type_pred_class <- ifelse(type_pred[, 2] >= 0.25, 1, 0)
+confusionMatrix(data = as.factor(type_pred_class), reference = as.factor(test$type), positive = "1")
+```
+
+```{r}
+ fourfoldplot(confusionMatrix(data = as.factor(type_pred_class), reference = as.factor(test$type), positive = "1")$table, conf.level = 0, std = "all.max", color = c("#f98e5a", "#9cc9de"))
+```
+
+
+
+
+
+
