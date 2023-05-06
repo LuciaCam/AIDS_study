@@ -15,6 +15,13 @@ output:
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = "center")
 ```
 
+```{r }
+# clear the database
+rm(list=ls()) 
+graphics.off()
+shell("cls")
+```
+
 ```{r packages}
 library(data.table)
 library(ggplot2)
@@ -127,19 +134,33 @@ prop.table(table(test$type))
 -   77.1% of the training data is type 0, DP\
 -   22.9% of the training data is type 1, CP\
 -   74.1% of the test data is type 0, DP\
--   26.9% of the test data is type 1, CP\
+-   25.9% of the test data is type 1, CP\
 
 ## Deep Classification Decision Tree
 
 ```{r Deep Tree}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
 # Create deep tree (page 219)
-deep_class_tree <- rpart(formula = type ~ ., data = train, method = "class", cp = 0, minsplit = 1)
+deep_class_tree <- rpart(formula = type ~ ., data = train, method = "class", cp = 0, minsplit = 2)
 
 # Generates a cost complexity parameter table that provides the complexity parameter value
 #summary(deep_class_tree)
 
 # Plot tree
 prp(deep_class_tree, type = 1, extra = 1, under = TRUE, split.font = 1, varlen = -10, box.col  = ifelse(deep_class_tree$frame$var == "<leaf>", 'lightblue', 'white'))
+
+# Count number of leaves 
+length(deep_class_tree$frame$var[deep_class_tree$frame$var == "<leaf>"]) 
+
+# Variable importance, deep tree
+kable_styling(kable(round(100*deep_class_tree$variable.importance / sum(deep_class_tree$variable.importance), 2), col.names = "Importance %"), full_width = TRUE) |>  kable_classic() 
+
+printcp(deep_class_tree)
+
+#Get the lowest CP value from CP table
+deep_class_tree$cptable[which.min(deep_class_tree$cptable[,"xerror"]),"CP"]
 ```
 
 -   Fit a binary model, type (0,1)\
@@ -148,44 +169,31 @@ prp(deep_class_tree, type = 1, extra = 1, under = TRUE, split.font = 1, varlen =
 -   To avoid overfitting, one can prune the tree by removing splits or branches from the tree.\
 -   A larger cp: More aggressive the pruning, simplifying the tree and reduces the possibility of overfitting the model.\
 
-```{r}
-# Count number of leaves 
-length(deep_class_tree$frame$var[deep_class_tree$frame$var == "<leaf>"]) 
-```
+-   Deep tree has a total of 37 terminal nodes.\
 
--   Deep tree has a total of 38 terminal nodes.\
+Variance importance measures the contribution of each predictor variable in the model of the response variable, `type`. It is computed based on the number of times that predictor is used to split the data in the decision tree as well as the improvement of the model's performance. `cd4` appears to have the biggest influence followed by `cd8` and `rna`. `sex` is much lower than all the other variables.\
 
-```{r}
-# Variable importance, deep tree
-kable_styling(kable(round(100*deep_class_tree$variable.importance / sum(deep_class_tree$variable.importance), 2), col.names = "Importance %"), full_width = TRUE) |>  kable_classic() 
-```
+Lowest xerror and xstd is nsplit = 2 with a CP of 0.04. All four predictors were used.\
 
-Variance importance measures the contribution of each predictor variable in the model of the response variable, `type`. It is computed based on the number of times that predictor is used to split the data in the decision tree as well as the improvement of the model's performance. `cd8` appears to have the biggest influence followed by `rna` and `cd4`. `sex` is much lower than all the other variables.\
+The resulting min.xerror variable of 0.04 contains the value of the complexity parameter associated with the *minimum cross-validated error*. This value can be used to prune the decision tree to the appropriate level of complexity to avoid overfitting.\
 
 ```{r}
-printcp(deep_class_tree)
-```
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
 
-Lowest xerror and xstd is nsplit = 1 with a CP of 0.05. All four predictors were used.\
-
-```{r}
-#Get the lowest CP value from CP table
-deep_class_tree$cptable[which.min(deep_class_tree$cptable[,"xerror"]),"CP"]
-```
-
-The resulting min.xerror variable of 0.05 contains the value of the complexity parameter associated with the *minimum cross-validated error*. This value can be used to prune the decision tree to the appropriate level of complexity to avoid overfitting.\
-
-```{r}
 #Plot the optimal Cp value
 plotcp(deep_class_tree)
 ```
 
 Plotcp() provides a graphical representation to the cross validated error summary. The cp values are plotted against the geometric mean to depict the deviation until the minimum value is reached.\
-- The x-val relative error (cross-validated error rate) is minimized at size of tree 1 with the cp equaling infinity.\
+- The x-val relative error (cross-validated error rate) is minimized at size of tree 3 with the cp equaling 0.046.\
 - When the "x-val relative error" values start to increase rapidly, it indicates that the decision tree model is starting to overfit the training data and may not generalize well to new, unseen data.\
 
 ## Deep Tree Confusion Matrix
 ```{r Deep Tree Confusion Matrix}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
 predict_deep_class_tree <- predict(deep_class_tree, test, type = "class")
 
 # Create confusion matrix for classification tree
@@ -219,7 +227,7 @@ deep_precision1 <- conf_mat_tree1$byClass[5]
 deep_precision1
 ```
 
-The precision score is 80.2%.\
+The precision score is 73.8%.\
 
 ```{r Acc Spec Spec Deep Tree}
 # Accuracy and specificity for tree
@@ -235,7 +243,7 @@ $$ Sensitivty = TP/(TP+FN)$$
 Specificity: The proportion of true negatives among all actual negatives. In other words, specificity measures how well the model identifies the negative class. Higher the value, the better!\
 $$ Specificity = TN/(TN+FP)$$
 
-The accuracy s 69.9%, while Sensitivity is 78.3% and Specificity is 44.8%. This model does not predict the negative class as well.\
+The accuracy s 63.3%, while Sensitivity is 78.3% and Specificity is 20.7%. This model does not predict the negative class as well.\
 
 F-measure: It is difficult to compare two models with low precision and high recall or vice versa. So to make them comparable, we use F-Score. F-score helps to measure Recall and Precision at the same time. It uses Harmonic Mean in place of Arithmetic Mean by punishing the extreme values more.\
 $$F-measure =  \frac{2*Recall*Precision}{Recall + Precision}$$
@@ -244,9 +252,12 @@ $$F-measure =  \frac{2*Recall*Precision}{Recall + Precision}$$
 (2*deep_recall1 * deep_precision1)/(deep_recall1 + deep_precision1)
 ```
 
-The f-measure score is 79.2%.
+The f-measure score is 76.2%.
 
 ```{r}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
 #Obtaining predicted probabilites for Test data
 deep.probs = predict(deep_class_tree,
                  newdata = test,
@@ -263,38 +274,41 @@ plot(rocCurve.deep,col=c(1))
 auc(rocCurve.deep)
 ```
 
-AUC is 38.43%.
+AUC is 50.5%.
 
 After computing the optimal xerror and CP, we now prune the tree back to get the best model.
 
 ```{r}
-prune_tree <- prune(deep_class_tree, cp = deep_class_tree$cptable[which.min(deep_class_tree$cptable[,"xerror"]),"CP"])
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
+prune_tree <- prune(deep_class_tree, cp = 0.026316)
 
 fancyRpartPlot(prune_tree, uniform = TRUE, caption = NULL, palettes = "GnBu", digits = -3, main = "Pruned Classification Tree")
 ```
 
--   It appears that the optimal tree only has one split at `rna` \< 267,228, known as the root node.\
--   This predictor value is used to split the data into two groups based on the threshold of 267,228. 
--   Observations on the left satisfy the condition that `rna` is less than that value. Therefore, they are classified as DP (0), otherwise CP (1) on the right side which would be equivalent to stating the the remaining observations are equal or greater than 267K.\
--   There are two terminal nodes compared to the 38 that was seen within the deep classification model.\
--   Three nodes of a decision tree, In each node, there is either a 0/1 which represents DP or CP, and two decimals within. The 0 or 1 indicates that activity that the group wants to take. The number on the left shows the probability of people in this group to take this activity. While the right-hand probability is the opposite, they do not take the activity.\
--   In the root node, we see a 0 which represents the DP, 77.1% which is the probability that only one partner is HIV-positive, and only 22.9% of those individuals are both HIV-positive. Depending on if the respectie observation meets the criteria plays out how the terminal nodes read. There are 84.3% of DP that have an `rna` less than the condition. Within that left node, there is another proportion which is 15.7%, representing those that do not meet that criteria. Together, they equal 100%. In the other node, once again, there are two values that are represented, and can be interpreted in the same manner.\
+-   It appears that the optimal tree only has one split at `rna` \< 274,063, known as the root node.\
+-   This predictor value is used to split the data into two groups based on the threshold of 274,063.
+-   Observations on the left satisfy the condition that `rna` is less than that value. Therefore, they are classified as DP (0), otherwise CP (1) on the right side which would be equivalent to stating the the remaining observations are equal or greater than 274K.\
+-   There are three terminal nodes compared to the 38 that was seen within the deep classification model.\
+-   Five nodes of a decision tree, In each node, there is either a 0/1 which represents DP or CP, and two decimals within. The 0 or 1 indicates that activity that the group wants to take. The number on the left shows the probability of people in this group to take this activity. While the right-hand probability is the opposite, they do not take the activity.\
+-   In the root node, we see a 0 which represents the DP, 77.1% which is the probability that only one partner is HIV-positive, and only 22.9% of those individuals are both HIV-positive. Depending on if the respectie observation meets the criteria plays out how the terminal nodes read. There are 83.7% of DP that have an `rna` less than the condition. Within that left node, there is another proportion which is 16.3%, representing those that do not meet that criteria. Together, they equal 100%. In the other node, once again, there are two values that are represented, and can be interpreted in the same manner.\
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Variable importance, prune tree
 kable_styling(kable(round(100*prune_tree$variable.importance / sum(prune_tree$variable.importance), 2), col.names = "Importance %"), full_width = TRUE) |>  kable_classic() 
 ```
 
 -   In the deep tree, all predictor values were used. This model no longer uses `sex`, and this was intuitive since in the previous model, it only had an importance of approximately 4%. `cd8` used to be the most important factor, but now `rna` takes the lead, followed by the other two cells.\
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 printcp(prune_tree)
 ```
 
-This verifies the optimal choice of 1-split.\
+This verifies the optimal choice of 2-split.\
 
 ## Pruned Tree Confusion Matrix
-```{r Pruned Tree Confusion Matrix}
+```{r Pruned Tree Confusion Matrix, eval=FALSE, include=FALSE}
 predict_prune_tree <- predict(prune_tree, test, type = "class")
 
 # Create confusion matrix for classification tree
@@ -305,35 +319,35 @@ conf_mat_tree2
 fourfoldplot(confusionMatrix(predict_prune_tree, as.factor(test$type))$table)
 ```
 
-```{r Pruned Tree Recall}
+```{r Pruned Tree Recall, eval=FALSE, include=FALSE}
 deep_recall2 <- conf_mat_tree2$byClass[6]
 deep_recall2
 ```
 
 The recall score is 90.4%.
 
-```{r Pruned Tree Precision}
+```{r Pruned Tree Precision, eval=FALSE, include=FALSE}
 deep_precision2 <- conf_mat_tree2$byClass[5]
 deep_precision2
 ```
 
 The precision score is 80.6%.
 
-```{r Acc Spec Spec Deep Tree}
+```{r Acc Spec Spec Pruned Tree ,eval=FALSE, include=FALSE}
 # Accuracy and specificity for tree
 tree_res2 = c(conf_mat_tree2$overall[1], conf_mat_tree2$byClass[1], conf_mat_tree2$byClass[2])
 tree_res2
 ```
 
-The accuracy s 76.8%, while Sensitivity is 90.3% and Specificity is 37.9%. This model continues to not predict the negative class as well as it has decreased since the deep tree model. Both the accuracy and sensivity have increased though.\
+The accuracy s 76.8%, while Sensitivity is 90.3% and Specificity is 37.9%. This model continues to not predict the negative class as well as it has decreased since the deep tree model. Both the accuracy and sensitivity have increased though.\
 
-```{r Pruned Tree F-measure}
+```{r Pruned Tree F-measure, eval=FALSE, include=FALSE}
 (2*deep_recall2 * deep_precision2)/(deep_recall2 + deep_precision2)
 ```
 
 The f-measure score is 85.2%.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 #Obtaining predicted probabilites for Test data
 prune.probs = predict(prune_tree,
                  newdata = test,
@@ -356,6 +370,9 @@ This next part could be for general knowledge?
 ## Classification Decision Tree
 
 ```{r}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
 # Fit the model
 class_tree <- rpart(type ~ ., data = train, method = "class") # cp default is 0.01
 
@@ -363,7 +380,7 @@ class_tree <- rpart(type ~ ., data = train, method = "class") # cp default is 0.
 fancyRpartPlot(class_tree, caption = NULL, main = "Classification Tree", palettes = "GnBu", digits = -3)
 ```
 
--   The classification tree is smaller than the deep tree but much larger than the pruned tree as this model has eight terminal nodes. This in due to the CP being set to the default at 0.01. The deep tree has a value of 0, while the pruned tree's CP was higher at 0.05, therefore, causing the tree to be more pruned.
+-   The classification tree is smaller than the deep tree but approximately the same as the pruned tree. This in due to the CP being set to the default at 0.01. The deep tree has a value of 0, while the pruned tree's CP was higher at 0.05, therefore, causing the tree to be more pruned.
 
 ```{r}
 # Variable importance, deep tree
@@ -372,37 +389,37 @@ kable_styling(kable(round(100*class_tree$variable.importance / sum(class_tree$va
 
 -   The variable importance is a mixture of the deep tree and pruned results. This model uses all predictors, but in order of the pruned tree with `rna` being the most relevant. Once again, `sex` is barely used for splitting and is pretty much irrelevant.
 
+
+```{r Deep Tree Confusion Matrix}
+# Set the seed for the random number generator for reproducing the partition.
+set.seed(453)
+
+predict_class_tree <- predict(class_tree, test, type = "class")
+
+# Create confusion matrix for classification tree
+conf_mat_tree1  <- confusionMatrix(predict_class_tree, as.factor(test$type))
+conf_mat_tree1
+
+# Create fourfoldplot
+fourfoldplot(confusionMatrix(predict_deep_class_tree, as.factor(test$type))$table)
+```
+
 ```{r}
 printcp(class_tree)
 ```
 
-Right away, we see that the optimal choice for xerror and xstd are at split 1, which corresponds to a CP or .026. This is lower than the the pruned tree, and therefore, will explore that option now.
+Right away, we see that the optimal choice for xerror and xstd are at split 2, which corresponds to a CP or .010. This is lower than the the deep tree but similar to the pruned tree. Therefore, will explore that option now.
 
 ```{r}
-prune_tree_2 <- prune(class_tree, cp = 0.026316)
+prune_tree_2 <- prune(class_tree, cp = 0.010000)
 
 fancyRpartPlot(prune_tree_2, uniform = TRUE, caption = NULL, palettes = "GnBu", digits = -3, main = "Pruned Classification Tree")
 ```
 
-Once we recompute the pruned classification tree, we get the same exact result from what was concluded with the deep tree. Therefore, the conclusion for the classification decision tree is that one split on `rna` 267,228 will provide the most optimal predictions on the test data set. In the table, you will see the comparison between the two for a quick recap:
-
-```{r}
-Model <- c("Deep Tree", "Pruned Tree")
-Recall <- c(78.3, 90.4)
-Precision <- c(80.2, 80.6)
-Accuracy <- c(69.6, 76.8)
-Sensitivity <- c(78.3, 90.3)
-Specificity <- c(44.8, 37.9)
-F_measure <- c(79.2, 85.2)
-AUC <- c(38.43, 35.85)
-
-ktable1 <- data.frame(Model, Recall, Precision, Accuracy, Sensitivity, Specificity, F_measure, AUC)
-
-ktable1
-```
+Once we recompute the pruned classification tree, we get the same exact result from what was concluded with the pruned tree. Therefore, the conclusion for the classification decision tree is that two splits on `rna` 274,063, and cd8 >- 626 will provide the most optimal predictions on the test data set. 
 
 **UNSURE IF THIS PART IS NECESSARY!!! LETS DISCUSS**
-```{r}
+```{r eval=FALSE, include=FALSE}
 par(mfrow=c(1,2)) # Set two plots side-by-side
 
 # Predict probabilities for the classification tree with the validation set
@@ -428,7 +445,7 @@ gain.decile <- gains(predicted = ClassTreeDF$prob, actual = as.numeric(as.charac
 barplot(gain.decile$mean.resp / mean(as.numeric(as.character(ClassTreeDF$actual))), names.arg = gain.decile$depth, main = "Decile-wise Lift Chart", xlab = "Percentile", ylab = "Mean Response")
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Calculates the top-decile lift which expresses the incidence in 10% of observations 
 TopDecileLift(pred_prob[,2], test$type)
 ```
@@ -437,14 +454,14 @@ TopDecileLift(pred_prob[,2], test$type)
 
 The TopDecileLift() function allows a user to calculate the top-decile lift, a metric that expresses how the incidence in the 10% customers with the highest model predictions compares to the overall sample incidence. A lift of 1 is expected for a random model. For this classification tree though, a lift of 1.914 indicates that in the 10% highest predictions, roughly two times more positive cases are identified by the model than would be expected for a random selection of instances.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Produce table with gains
 gain_decile <- gains(actual = as.numeric(as.character(test$type)), 
                      predicted = predict(prune_tree, test, type = "prob")[,2])
 gain_decile
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Plot decile chart
 ## Height of bars
 heights <- gain_decile$mean.resp/mean(as.numeric(as.character(test$type)))
@@ -462,7 +479,7 @@ Resource: https://www.projectpro.io/recipes/tune-hyper-parameters-grid-search-r
 # Specifying the CV technique which will be passed into the train() function later and number parameter is the "k" in K-fold cross validation
 train_control = trainControl(method = "cv", number = 5, search = "grid")
 
-set.seed(1)
+set.seed(12)
 # Customizing the tuning grid
 gbmGrid <-  expand.grid(max_depth = c(3, 5, 7), 
                         nrounds = (1:10)*50, # number of trees
@@ -503,7 +520,9 @@ MODEL RESULTS
 Used 166 samples and 4 predictors. There was no pre-processing and the resampling used a cross-validation of 5 fold. The results across the tuning parameters turned out to have the highest accuracy at 77.1%, which had a max_depth of 5, nrounds of 50 (number of trees), and $\kappa$ of .218.
 
 ## Boosting Confusion Matrix
-```{r Deep Tree Confusion Matrix}
+```{r Boosting Tree Confusion Matrix}
+set.seed(12)
+
 predict_boosting <- predict(model, test)
 
 # Create confusion matrix for classification tree
@@ -515,6 +534,8 @@ fourfoldplot(confusionMatrix(predict_boosting, as.factor(test$type))$table)
 ```
 
 ```{r}
+set.seed(12)
+
 vip::vip(model, aesthetics = list(fill = "lightblue")) +
   ggtitle("Boosted Tree Variable Importance") + # Title name
   xlab("Variable") + # Label names
@@ -571,7 +592,7 @@ auc(rocCurve.boost)
 AUC is 62.61%.
 
 **UNSURE IF THIS PART IS NECESSARY!!! LETS DISCUSS**
-```{r}
+```{r eval=FALSE, include=FALSE}
 par(mfrow=c(1,2)) # Set two plots side-by-side
 
 # Create dataframe with the actual and probability values for the validation set
@@ -594,7 +615,7 @@ gain.decile <- gains(predicted = Boost_Tree$prob, actual = as.numeric(as.charact
 barplot(gain.decile$mean.resp / mean(as.numeric(as.character(Boost_Tree$actual))), names.arg = gain.decile$depth, main = "Decile-wise Lift Chart", xlab = "Percentile", ylab = "Mean Response")
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Calculates the top-decile lift which expresses the incidence in 10% of observations 
 TopDecileLift(boost_predict$prob[,2], valid$type)
 ```
@@ -616,7 +637,7 @@ bag
 cp = 0. This is the complexity parameter. By setting it to 0, we don’t require the model to be able to improve the overall fit by any amount in order to perform a split.\
 
 ## Bagging Confusion Matrix
-```{r Pruned Tree Confusion Matrix}
+```{r Bagging Tree Confusion Matrix}
 predict_bagged <- predict(bag, test)
 
 # Create confusion matrix for classification tree
@@ -648,21 +669,21 @@ data[,ggplot(.SD, aes(x=reorder(name, VI$Overall), y=VI$Overall)) +
 
 All predictors are used within the model. `cd8` is back at being the most important, with `rna` and `cd4` being approximately as important as `sex` continues to trail behind.
 
-```{r Boost Recall}
+```{r Bagging Recall}
 deep_recall4 <- conf_mat_tree4$byClass[6]
 deep_recall4
 ```
 
 EDIT VALUE: The recall score is 88.0%.
 
-```{r Boost Precision}
+```{r Bagging Precision}
 deep_precision4 <- conf_mat_tree4$byClass[5]
 deep_precision4
 ```
 
 EDIT VALUE: The precision score is 79.3%.
 
-```{r Acc Spec Spec Boost}
+```{r Acc Spec Spec Bagging}
 # Accuracy and specificity for tree
 tree_res4 = c(conf_mat_tree4$overall[1], conf_mat_tree4$byClass[1], conf_mat_tree4$byClass[2])
 tree_res4
@@ -670,7 +691,7 @@ tree_res4
 
 The accuracy s 74.1%, while Sensitivity is 88.0% and Specificity is 34.5%. This model also does not predict the negative class  well as it has decreased since the pruned tree model.\
 
-```{r Boost F-measure}
+```{r Bagging F-measure}
 (2*deep_recall4 * deep_precision4)/(deep_recall4 + deep_precision4)
 ```
 
@@ -696,7 +717,7 @@ auc(rocCurve.bag)
 AUC is 60.01%.
 
 **UNSURE IF THIS PART IS NECESSARY!!! LETS DISCUSS**
-```{r}
+```{r eval=FALSE, include=FALSE}
 par(mfrow=c(1,2)) # Set two plots side-by-side
 
 # Create dataframe with the actual and probability values for the validation set
@@ -719,7 +740,7 @@ gain.decile <- gains(predicted = Bagged_Tree$prob, actual = as.numeric(as.charac
 barplot(gain.decile$mean.resp / mean(as.numeric(as.character(Bagged_Tree$actual))), names.arg = gain.decile$depth, main = "Decile-wise Lift Chart", xlab = "Percentile", ylab = "Mean Response")
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Calculates the top-decile lift which expresses the incidence in 10% of observations 
 TopDecileLift(pred_bagged$prob[,2], valid$type)
 ```
@@ -819,7 +840,7 @@ auc(rocCurve.rf)
 AUC is 63.81%.
 
 **UNSURE IF THIS PART IS NECESSARY!!! LETS DISCUSS**
-```{r}
+```{r eval=FALSE, include=FALSE}
 par(mfrow=c(1,2)) # Set two plots side-by-side
 
 # Predict probabilities for the bagged tree with the validation set
@@ -845,7 +866,7 @@ gain.decile <- gains(predicted = RF_Tree$prob, actual = as.numeric(as.character(
 barplot(gain.decile$mean.resp / mean(as.numeric(as.character(RF_Tree$actual))), names.arg = gain.decile$depth, main = "Decile-wise Lift Chart", xlab = "Percentile", ylab = "Mean Response")
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Calculates the top-decile lift which expresses the incidence in 10% of observations 
 TopDecileLift(pred_RF[,2], valid$type)
 ```
@@ -869,9 +890,10 @@ Used 166 samples and 4 predictors with a cross-validation of 5 fold repeated onc
 pred_RFSGB <- predict(gbm, test)
 
 # Create confusion matrix for classification tree
-conf_mat_tree5  <- confusionMatrix(pred_RFSGB, test$type)
+conf_mat_tree6  <- confusionMatrix(pred_RFSGB, test$type)
 # I think this line below can be deleted
 # conf_mat_tree5 <- confusionMatrix(train$ype, gbm)
+conf_mat_tree6
 
 # Create fourfoldplot
 fourfoldplot(confusionMatrix(pred_RFSGB, as.factor(test$type))$table)
@@ -890,21 +912,21 @@ vip::vip(random_forest, aesthetics = list(fill = "lightblue")) +
 
 All predictors are used, and follow the same order as the classification model with 8 terminal modes.  `rna` does not continue to be the most important variable as `cd8` is approximately as relevant in this model.
 
-```{r RF Recall}
+```{r RFSBG Recall}
 deep_recall6 <- conf_mat_tree6$byClass[6]
 deep_recall6
 ```
 
 EDIT VALUE: The recall score is 88.0%.
 
-```{r RF Precision}
+```{r RFSBG Precision}
 deep_precision5 <- conf_mat_tree5$byClass[5]
 deep_precision5
 ```
 
 EDIT VALUE:The precision score is 79.3%.
 
-```{r Acc Spec Spec RF}
+```{r Acc Spec Spec RFSBG}
 # Accuracy and specificity for tree
 tree_res5 = c(conf_mat_tree5$overall[1], conf_mat_tree5$byClass[1], conf_mat_tree5$byClass[2])
 tree_res5
@@ -912,7 +934,7 @@ tree_res5
 
 EDIT VALUES: The accuracy s 74.1%, while Sensitivity is 88.0% and Specificity is 34.5%. This model also does not predict the negative class  well as it has decreased since the pruned tree model.\
 
-```{r RF F-measure}
+```{r RFSBG F-measure}
 (2*deep_recall5 * deep_precision5)/(deep_recall5 + deep_precision5)
 ```
 
@@ -956,28 +978,25 @@ ktable1
 
 **CREATIVELY PLOT IF THIS IS THE WAY WE GO**
 ```{r}
-barplot(matrix, col = "lightblue",border = "lightblue" ,
-         main = "Classification Tree Comparison", ylab = "RMSE", ylim=c(0,4000))
+#barplot(matrix, col = "lightblue",border = "lightblue" ,
+ #        main = "Classification Tree Comparison", ylab = "RMSE", ylim=c(0,4000))
 ```
 
 
 ```{r}
-plot(rocCurve.tree,col = c(4))
-plot(rocCurve.bagg,add = TRUE, col = c(6)) # color magenta is bagg
-plot(rocCurve.rf,add=TRUE,col=c(1)) # color black is rf
-plot(rocCurve.cf,add=TRUE,col=c(2)) # color red is cforest
-plot(rocCurve.gbm,add=TRUE,col=c(3)) # color green is gbm
+#plot(rocCurve.tree,col = c(4))
+#plot(rocCurve.bagg,add = TRUE, col = c(6)) # color magenta is bagg
+#plot(rocCurve.rf,add=TRUE,col=c(1)) # color black is rf
+#plot(rocCurve.cf,add=TRUE,col=c(2)) # color red is cforest
+#plot(rocCurve.gbm,add=TRUE,col=c(3)) # color green is gbm
 ```
 
 
 ### HELP!!!
-1. Cannot get the confusion matrix to run for Bagging
-- Once that is complete, I can populate the metrics
-2. Cannot get the confusion matrix to run for Random Forest SGB
-- Once that is complete, I can populate the metrics
-3. Should we add OOB? Some of the models have that feature built within their function, not sure if we have enough already?
+1. Should we add OOB? Some of the models have that feature built within their function, not sure if we have enough already?
 This will depend which method we go with (LDA, trees, log, etc.)
-4. Need to present the conclusion in an optimal way. We can work on this when we pick the route we will take :)
+2. Need to present the conclusion in an optimal way. We can work on this when we pick the route we will take :)
+3. Pruning... make sense?
 
 
 ## Trees: Important Notes
