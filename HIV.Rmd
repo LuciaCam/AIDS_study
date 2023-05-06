@@ -1278,7 +1278,7 @@ ggplot(CutSensSpec, aes(x = Cutoff)) +
        y = "Specificity or Sensitivity (fraction)",
        title = "Specificity and Sensitivity versus Cutoff Value") +
   theme_minimal()+
-  geom_vline(xintercept = .25, linetype = "dashed", color = "black")
+  geom_vline(xintercept = .25, linetype = "dashed", color = "black") +geom_vline(xintercept = 0.2875143, linetype = "dashed", color = "black")
 ```
 
 ```{r}
