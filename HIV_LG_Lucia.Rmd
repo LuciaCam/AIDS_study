@@ -181,11 +181,29 @@ test_log_odds <- log(type_pred / (1 - type_pred))
 
 
 ```{r}
-ggplot(mapping = aes(x = test$cd8, y = test_log_odds)) + geom_point()
-ggplot(mapping = aes(x = test$rna, y = test_log_odds, color = as.factor(test$nas))) + geom_point()
+test$nas <- as.factor(test$nas)
+levels(test$nas) <- c("Real value", "Imputed value")
+```
 
-ggplot(mapping = aes(x = train$cd8, y = model$linear.predictors)) + geom_point()
-ggplot(mapping = aes(x = train$rna, y = model$linear.predictors, color = as.factor(train$nas))) + geom_point()
+
+```{r}
+ggplot(mapping = aes(x = test$cd8, y = test_log_odds, color = test$nas)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(name = "Missing values \nimputation",
+                     values = c("Real value" = "#9cc9de", "Imputed value" = '#f98e5a')) +
+  labs(x = 'cd8',
+       y = 'Log odds of predicted values')
+ggsave('cd8assumption.png')
+
+ggplot(mapping = aes(x = test$rna, y = test_log_odds, color = test$nas)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(name = "Missing values \nimputation",
+                     values = c("Real value" = "#9cc9de", "Imputed value" = '#f98e5a')) +
+  labs(x = 'rna',
+       y = 'Log odds of predicted values')
+ggsave('rnaassumption.png')
 ```
 
 
